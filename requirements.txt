@@ -1,4 +1,4 @@
-crewai==0.30.0 # Or use latest compatible version
+crewai==0.30.0
 litellm
 streamlit
 python-dotenv
