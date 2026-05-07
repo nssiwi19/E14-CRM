@@ -7,7 +7,6 @@ WORKDIR /app
 # Cài đặt các thư viện hệ thống cần thiết (nếu có) cho việc build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
-    software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy file requirements và cài đặt
