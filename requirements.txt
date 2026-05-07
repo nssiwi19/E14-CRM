@@ -1,0 +1,6 @@
+crewai==0.30.0 # Or use latest compatible version
+litellm
+streamlit
+python-dotenv
+pydantic
+langchain
