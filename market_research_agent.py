@@ -11,26 +11,49 @@ if not GROQ_API_KEY:
     )
 
 from crewai import LLM
+from crewai.tools import tool
+from googlesearch import search
+
 main_llm = LLM(
     model="groq/llama-3.3-70b-versatile",
     api_key=GROQ_API_KEY
 )
 
+@tool("internet_search_tool")
+def search_tool(query: str) -> str:
+    """Tìm kiếm thông tin trên Internet. Đầu vào là một chuỗi truy vấn tìm kiếm."""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=3))
+            
+            if not results:
+                return "Không tìm thấy kết quả nào."
+                
+            output = []
+            for r in results:
+                output.append(f"Title: {r.get('title')}\nSnippet: {r.get('body')}\nLink: {r.get('href')}")
+            return "\n\n".join(output)
+    except Exception as e:
+        return f"Lỗi tìm kiếm: {str(e)}"
+
 # 2. Khởi tạo các Agents
 researcher_agent = Agent(
     role="Market Researcher",
     goal=(
-        "Tìm kiếm và thu thập dữ liệu mới nhất, chi tiết nhất về thị trường được yêu cầu. "
-        "Phân tích các xu hướng chính, đối thủ cạnh tranh, và các yếu tố tác động."
+        "Tìm kiếm trên Internet và thu thập dữ liệu mới nhất, chính xác nhất về thị trường. "
+        "TUYỆT ĐỐI KHÔNG tự bịa ra số liệu. Luôn dùng công cụ tìm kiếm để lấy dữ liệu thực tế."
     ),
     backstory=(
-        "Bạn là một chuyên gia nghiên cứu thị trường xuất sắc, có khả năng tổng hợp "
-        "dữ liệu lớn và tìm ra những insights giá trị nhất từ các nguồn thông tin khác nhau. "
-        "Bạn luôn nắm bắt được những xu hướng công nghệ và kinh tế mới nhất."
+        "Bạn là một chuyên gia nghiên cứu thị trường xuất sắc. "
+        "Bạn luôn sử dụng công cụ tìm kiếm trên mạng để tìm ra dữ liệu thật trước khi trả lời. "
+        "Bạn không bao giờ đưa ra các con số ảo tưởng hay số liệu tự đoán."
     ),
     verbose=True,
     allow_delegation=False,
     llm=main_llm,
+    tools=[search_tool],
+    max_iter=3
 )
 
 verifier_agent = Agent(
@@ -47,6 +70,7 @@ verifier_agent = Agent(
     verbose=True,
     allow_delegation=False,
     llm=main_llm,
+    max_iter=3
 )
 
 writer_agent = Agent(
@@ -63,18 +87,20 @@ writer_agent = Agent(
     verbose=True,
     allow_delegation=False,
     llm=main_llm,
+    max_iter=3
 )
 
 # 4. Định nghĩa luồng Nhiệm vụ (Tasks)
 task1 = Task(
     description=(
-        'Nghiên cứu toàn diện về chủ đề: "{topic}". '
+        'Sử dụng công cụ tìm kiếm Internet để nghiên cứu toàn diện về chủ đề: "{topic}". '
         'Hãy thu thập dữ liệu chi tiết, các thống kê quan trọng, phân tích các xu hướng, '
-        'và chỉ ra các cơ hội/thách thức (nếu có liên quan) đối với chủ đề này.'
+        'và chỉ ra các cơ hội/thách thức (nếu có liên quan) đối với chủ đề này. '
+        'BẮT BUỘC phải dùng search tool để lấy số liệu thực, không tự bịa.'
     ),
     expected_output=(
         "Một bản tóm tắt dữ liệu thô toàn diện về chủ đề được giao, "
-        "bao gồm số liệu, xu hướng và nhận định chuyên gia."
+        "bao gồm số liệu thực tế từ internet, xu hướng và nhận định chuyên gia."
     ),
     agent=researcher_agent,
 )

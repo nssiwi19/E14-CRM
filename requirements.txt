@@ -1,6 +1,9 @@
-crewai==0.30.0
+crewai
 litellm
 streamlit
 python-dotenv
 pydantic
 langchain
+langchain-community
+duckduckgo-search
+setuptools<70.0.0
