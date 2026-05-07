@@ -3,18 +3,22 @@ import os
 import re
 from typing import Optional
 
-from crewai import Agent, Crew, Process, Task
-from langchain.tools import tool
+from crewai import Agent, Crew, Process, Task, LLM
+from crewai.tools import tool
 from dotenv import load_dotenv
-
 
 # 1. Cấu hình API Key
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY or OPENAI_API_KEY.startswith("sk-your-"):
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
     raise EnvironmentError(
-        "Thiếu OPENAI_API_KEY hop le. Hay tao file .env tu .env.example hoac set bien moi truong."
+        "Thiếu GROQ_API_KEY hợp lệ. Hãy tạo file .env từ .env.example hoặc set biến môi trường."
     )
+
+main_llm = LLM(
+    model="groq/llama-3.3-70b-versatile",
+    api_key=GROQ_API_KEY
+)
 
 
 # 2. Định nghĩa công cụ truy xuất dữ liệu doanh nghiệp (Tool Calling)
@@ -95,6 +99,7 @@ classifier_agent = Agent(
     ),
     verbose=True,
     allow_delegation=False,
+    llm=main_llm,
 )
 
 data_agent = Agent(
@@ -110,6 +115,7 @@ data_agent = Agent(
     tools=[search_enterprise_database],
     verbose=True,
     allow_delegation=False,
+    llm=main_llm,
 )
 
 response_agent = Agent(
@@ -125,22 +131,14 @@ response_agent = Agent(
     ),
     verbose=True,
     allow_delegation=False,
+    llm=main_llm,
 )
 
 
-# 4. Input giả lập: Email từ một doanh nghiệp bán lẻ ở TP.HCM
-enterprise_email = """
-Kính gửi đội ngũ hỗ trợ,
-Tôi là Tuấn từ Công ty Cổ phần Bán lẻ Minh Tuấn (MST: 0314456789).
-Hiện tại hệ thống cửa hàng của chúng tôi đang bị lỗi khi gọi API đối soát dữ liệu với nền tảng của các bạn.
-Lỗi này đang ảnh hưởng trực tiếp đến việc thanh toán của khách hàng tại quầy. Mong các bạn kiểm tra gấp.
-"""
-
-
-# 5. Định nghĩa luồng Nhiệm vụ (Tasks)
+# 4. Định nghĩa luồng Nhiệm vụ (Tasks)
 task1 = Task(
     description=(
-        f'Phân tích email sau: "{enterprise_email}". '
+        'Phân tích email sau: "{enterprise_email}". '
         "Hãy xác định vấn đề họ đang gặp phải, phân loại intent "
         "(Hợp tác/Hỗ trợ/Khiếu nại) và trích xuất Mã số thuế hoặc Tên công ty."
     ),
@@ -176,33 +174,32 @@ task3 = Task(
     agent=response_agent,
 )
 
-
-def _prepare_inputs() -> dict:
-    """
-    Chuẩn bị input tường minh cho luồng Crew để tăng tính ổn định khi demo.
-    """
-    return {"enterprise_email": enterprise_email}
-
-
-# 6. Vận hành hệ thống
-b2b_crm_crew = Crew(
-    agents=[classifier_agent, data_agent, response_agent],
-    tasks=[task1, task2, task3],
-    process=Process.sequential,
-    verbose=True,
-)
+def run_b2b_crm(email_content: str) -> str:
+    # 5. Vận hành hệ thống
+    b2b_crm_crew = Crew(
+        agents=[classifier_agent, data_agent, response_agent],
+        tasks=[task1, task2, task3],
+        process=Process.sequential,
+        verbose=True,
+    )
+    
+    result = b2b_crm_crew.kickoff(inputs={"enterprise_email": email_content})
+    
+    if hasattr(result, 'raw'):
+        return result.raw
+    return str(result)
 
 
 if __name__ == "__main__":
+    test_email = """
+    Kính gửi đội ngũ hỗ trợ,
+    Tôi là Tuấn từ Công ty Cổ phần Bán lẻ Minh Tuấn (MST: 0314456789).
+    Hiện tại hệ thống cửa hàng của chúng tôi đang bị lỗi khi gọi API đối soát dữ liệu với nền tảng của các bạn.
+    Lỗi này đang ảnh hưởng trực tiếp đến việc thanh toán của khách hàng tại quầy. Mong các bạn kiểm tra gấp.
+    """
+    
     print("Khởi động hệ thống Auto-Classification & Response CRM...\n")
-    result = b2b_crm_crew.kickoff(inputs=_prepare_inputs())
-
-    # Hỗ trợ hiển thị đẹp nếu task1 trả kiểu dict string.
-    if isinstance(result, str):
-        try:
-            _ = ast.literal_eval(result)
-        except (ValueError, SyntaxError):
-            pass
+    result = run_b2b_crm(test_email)
 
     print("\n" + "=" * 50)
     print(" EMAIL PHẢN HỒI ĐÃ ĐƯỢC TẠO TỰ ĐỘNG:")
