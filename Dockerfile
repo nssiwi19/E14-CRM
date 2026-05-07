@@ -16,11 +16,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy toàn bộ source code vào container
 COPY . .
 
-# Mở port mặc định của Streamlit
-EXPOSE 8501
+# Mở port mặc định của Hugging Face
+EXPOSE 7860
 
 # Lệnh kiểm tra sức khỏe của Streamlit container
-HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
+HEALTHCHECK CMD curl --fail http://localhost:7860/_stcore/health
 
 # Chạy ứng dụng
-ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0"]
