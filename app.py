@@ -3,7 +3,7 @@ from market_research_agent import run_market_research
 from crm_b2b_agent import run_b2b_crm
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="AI Market Insights & CRM", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Esgoo CRM & AI Agent", page_icon="📈", layout="wide")
 
 # --- CUSTOM CSS ---
 st.markdown("""
@@ -26,8 +26,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- HEADER ---
-st.markdown('<h1 class="gradient-text">📈 AI Market Insights & CRM</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Hệ thống Trợ lý AI (Powered by CrewAI & Groq Llama-3).</p>', unsafe_allow_html=True)
+st.markdown('<h1 class="gradient-text">📈 Esgoo CRM & AI Agent</h1>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Hệ thống Trợ lý AI xử lý nghiệp vụ tự động (Powered by CrewAI & Groq).</p>', unsafe_allow_html=True)
 
 # --- KHỞI TẠO SESSION STATE (Lịch sử Chat) ---
 if "messages" not in st.session_state:
@@ -35,15 +35,22 @@ if "messages" not in st.session_state:
 
 # --- SIDEBAR (Điều khiển) ---
 with st.sidebar:
-    st.header("⚙️ Cài đặt")
+    st.header("⚙️ Điều hướng & Cài đặt")
+    
+    app_mode = st.radio(
+        "Chọn chức năng:",
+        ["📊 Market Research", "🤝 CRM B2B Response"],
+        index=0
+    )
+    
+    st.divider()
+    
     if st.button("🧹 Xóa Lịch sử Trò chuyện", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
 
-# --- STREAMLIT TABS ---
-tab1, tab2 = st.tabs(["📊 Market Research", "🤝 CRM B2B Response"])
-
-with tab1:
+# --- APP ROUTING ---
+if app_mode == "📊 Market Research":
     st.markdown("### 🕵️‍♂️ Nghiên cứu thị trường")
     # --- HIỂN THỊ LỊCH SỬ CHAT ---
     for msg in st.session_state.messages:
@@ -75,7 +82,7 @@ with tab1:
                     st.error(error_msg)
                     st.session_state.messages.append({"role": "assistant", "content": error_msg})
 
-with tab2:
+elif app_mode == "🤝 CRM B2B Response":
     st.markdown("### 📩 Xử lý Email Đối tác B2B")
     st.markdown("Dán email từ khách hàng/đối tác vào đây để AI phân tích ý định và tự động tra cứu thông tin CRM tương ứng.")
     
