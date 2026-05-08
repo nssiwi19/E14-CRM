@@ -2,6 +2,11 @@ import streamlit as st
 from market_research_agent import run_market_research
 from crm_b2b_agent import run_b2b_crm
 
+try:
+    from database import supabase
+except ImportError:
+    supabase = None
+
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Esgoo CRM & AI Agent", page_icon="📈", layout="wide")
 
@@ -32,6 +37,13 @@ st.markdown('<p class="subtitle">Hệ thống Trợ lý AI xử lý nghiệp v�
 # --- KHỞI TẠO SESSION STATE (Lịch sử Chat) ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
+    if supabase:
+        try:
+            response = supabase.table("chat_logs").select("*").order("created_at").execute()
+            if response.data:
+                st.session_state.messages = [{"role": row["role"], "content": row["content"]} for row in response.data]
+        except Exception as e:
+            st.error(f"Lỗi tải lịch sử chat từ Supabase: {e}")
 
 # --- SIDEBAR (Điều khiển) ---
 with st.sidebar:
@@ -46,6 +58,12 @@ with st.sidebar:
     st.divider()
     
     if st.button("🧹 Xóa Lịch sử Trò chuyện", use_container_width=True):
+        if supabase:
+            try:
+                # Xóa toàn bộ dữ liệu trong bảng (dùng neq với một role không tồn tại để bypass bắt buộc có filter)
+                supabase.table("chat_logs").delete().neq("role", "dummy_role_to_delete_all").execute()
+            except Exception as e:
+                st.sidebar.error(f"Lỗi xóa dữ liệu trên Supabase: {e}")
         st.session_state.messages = []
         st.rerun()
 
@@ -63,6 +81,11 @@ if app_mode == "📊 Market Research":
         with st.chat_message("user"):
             st.markdown(prompt)
         st.session_state.messages.append({"role": "user", "content": prompt})
+        if supabase:
+            try:
+                supabase.table("chat_logs").insert({"role": "user", "content": prompt}).execute()
+            except Exception as e:
+                st.error(f"Lỗi lưu câu hỏi: {e}")
         
         # 2. Xử lý câu trả lời của Assistant
         with st.chat_message("assistant"):
@@ -76,6 +99,11 @@ if app_mode == "📊 Market Research":
                     status.update(label="✅ Phân tích hoàn tất!", state="complete", expanded=False)
                     st.markdown(report)
                     st.session_state.messages.append({"role": "assistant", "content": report})
+                    if supabase:
+                        try:
+                            supabase.table("chat_logs").insert({"role": "assistant", "content": report}).execute()
+                        except Exception as e:
+                            st.error(f"Lỗi lưu câu trả lời: {e}")
                 except Exception as e:
                     error_msg = f"❌ Đã xảy ra lỗi: {str(e)}"
                     status.update(label="Lỗi xử lý", state="error", expanded=True)

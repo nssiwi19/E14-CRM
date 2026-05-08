@@ -13,6 +13,7 @@ if not GROQ_API_KEY:
 from crewai import LLM
 from crewai.tools import tool
 from googlesearch import search
+from crm_b2b_agent import search_enterprise_database
 
 main_llm = LLM(
     model="groq/llama-3.3-70b-versatile",
@@ -52,7 +53,7 @@ researcher_agent = Agent(
     verbose=True,
     allow_delegation=False,
     llm=main_llm,
-    tools=[search_tool],
+    tools=[search_tool, search_enterprise_database],
     max_iter=3
 )
 
@@ -93,10 +94,11 @@ writer_agent = Agent(
 # 4. Định nghĩa luồng Nhiệm vụ (Tasks)
 task1 = Task(
     description=(
-        'Sử dụng công cụ tìm kiếm Internet để nghiên cứu toàn diện về chủ đề: "{topic}". '
-        'Hãy thu thập dữ liệu chi tiết, các thống kê quan trọng, phân tích các xu hướng, '
-        'và chỉ ra các cơ hội/thách thức (nếu có liên quan) đối với chủ đề này. '
-        'BẮT BUỘC phải dùng search tool để lấy số liệu thực, không tự bịa.'
+        'Nghiên cứu toàn diện về chủ đề: "{topic}". '
+        'QUAN TRỌNG: Nếu câu hỏi yêu cầu tìm thông tin về một "Tên công ty" cụ thể hoặc "Mã số thuế", '
+        'bạn PHẢI sử dụng công cụ `search_enterprise_database` để tra cứu trong kho dữ liệu nội bộ (CRM) trước tiên. '
+        'Nếu không tìm thấy hoặc người dùng hỏi về thông tin vĩ mô/thị trường chung, hãy dùng `internet_search_tool` (Internet) để lấy dữ liệu. '
+        'Hãy thu thập dữ liệu chi tiết, các thống kê quan trọng. BẮT BUỘC dùng tool để lấy số liệu thực, không tự bịa.'
     ),
     expected_output=(
         "Một bản tóm tắt dữ liệu thô toàn diện về chủ đề được giao, "

@@ -2,6 +2,62 @@ import streamlit as st
 import pandas as pd
 import io
 
+try:
+    from database import supabase
+except ImportError:
+    supabase = None
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_all_enterprises_from_supabase():
+    """Hàm tải dữ liệu từ Supabase sử dụng cơ chế Pagination và Caching."""
+    if not supabase:
+        return pd.DataFrame()
+    
+    table_name = "doanh_nghiep"
+    all_data = []
+    page_size = 1000
+    start = 0
+    
+    while True:
+        # Lấy từng đoạn (chunk) 1000 bản ghi để tránh bị Timeout API
+        response = supabase.table(table_name).select("*").range(start, start + page_size - 1).execute()
+        data = response.data
+        if not data:
+            break
+        all_data.extend(data)
+        
+        # Nếu số bản ghi lấy về nhỏ hơn page_size nghĩa là đã lấy hết
+        if len(data) < page_size:
+            break
+        start += page_size
+        
+        # Giới hạn an toàn (VD: 100,000 dòng max) để tránh vòng lặp vô hạn
+        if start >= 100000:
+            break
+            
+    df = pd.DataFrame(all_data)
+    if not df.empty:
+        # Đổi tên cột cho chuẩn với hiển thị UI
+        df = df.rename(columns={
+            "ma_so_thue": "MST",
+            "ten_cong_ty": "Tên công ty",
+        })
+        
+        # Xử lý Map ID tỉnh thành
+        if "tinh_thanh_id" in df.columns:
+            def map_city(x):
+                if str(x) == "1": return "Hà Nội"
+                if str(x) == "2": return "Hồ Chí Minh"
+                return str(x) if pd.notnull(x) else "Chưa xác định"
+            df["Thành phố"] = df["tinh_thanh_id"].apply(map_city)
+            
+        # Bổ sung cột Ngành nghề (nếu Supabase chưa có) để UI không bị gãy
+        if "Ngành nghề" not in df.columns:
+            df["Ngành nghề"] = "Chưa phân loại"
+            
+    return df
+
+
 def get_mock_data():
     """Tạo dữ liệu giả lập cho danh sách 100k doanh nghiệp (thu gọn để demo)."""
     data = {
@@ -18,10 +74,31 @@ def render_analytics_dashboard():
     st.markdown("### 📊 Data Analytics Dashboard (B2B Records)")
     st.write("Công cụ phân tích và trực quan hóa danh sách mã số thuế doanh nghiệp (Đặc chuẩn cho tệp cào 100.000 doanh nghiệp HN & HCM).")
 
-    # 1. Upload file
-    uploaded_file = st.file_uploader("Tải lên danh sách doanh nghiệp (CSV/Excel)", type=["csv", "xlsx"])
+    # 1. Upload file hoặc Tải từ Supabase
+    col_up1, col_up2 = st.columns([1, 1])
     
-    if uploaded_file is not None:
+    with col_up1:
+        uploaded_file = st.file_uploader("Tải lên danh sách (CSV/Excel)", type=["csv", "xlsx"])
+        
+    with col_up2:
+        st.write("Hoặc đồng bộ trực tiếp từ Database nội bộ")
+        use_supabase = st.button("⬇️ Tải toàn bộ dữ liệu từ Supabase", type="primary", use_container_width=True)
+
+    df = pd.DataFrame()
+    
+    if use_supabase:
+        if not supabase:
+            st.error("Chưa kết nối được Supabase. Vui lòng kiểm tra lại file .env")
+            df = get_mock_data()
+        else:
+            with st.spinner("Đang kéo dữ liệu từ Supabase (quá trình này dùng Cache, lần sau sẽ rất nhanh)..."):
+                df = fetch_all_enterprises_from_supabase()
+            if not df.empty:
+                st.success(f"✅ Đã tải thành công {len(df):,} doanh nghiệp từ Database!")
+            else:
+                st.warning("Bảng dữ liệu trong Supabase đang trống.")
+                df = get_mock_data()
+    elif uploaded_file is not None:
         try:
             if uploaded_file.name.endswith('.csv'):
                 df = pd.read_csv(uploaded_file)
@@ -34,7 +111,7 @@ def render_analytics_dashboard():
             st.warning("Đang sử dụng dữ liệu mẫu thay thế.")
     else:
         df = get_mock_data()
-        st.info("Chưa có file nào được tải lên. Đang hiển thị **dữ liệu mẫu (Mock Data)**.")
+        st.info("Chưa có file nào được tải lên hoặc chọn đồng bộ. Đang hiển thị **dữ liệu mẫu (Mock Data)**.")
 
     # 2. Hiển thị số liệu tổng quan (KPIs)
     col1, col2, col3, col4 = st.columns(4)

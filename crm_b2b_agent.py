@@ -7,6 +7,11 @@ from crewai import Agent, Crew, Process, Task, LLM
 from crewai.tools import tool
 from dotenv import load_dotenv
 
+try:
+    from database import supabase
+except ImportError:
+    supabase = None
+
 # 1. Cấu hình API Key
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -25,43 +30,48 @@ main_llm = LLM(
 @tool("search_enterprise_database")
 def search_enterprise_database(mst_or_name: str) -> str:
     """
-    Truy vấn cơ sở dữ liệu 100k doanh nghiệp bằng Mã số thuế (MST) hoặc Tên công ty.
-    Trả về thông tin chi tiết: MST, Tên, Năm thành lập, Ngành nghề kinh doanh, Địa chỉ.
+    Truy vấn cơ sở dữ liệu doanh nghiệp từ Supabase bằng Mã số thuế (MST) hoặc Tên công ty.
+    Trả về thông tin chi tiết: MST, Tên, Năm thành lập, SĐT, Email, Địa chỉ.
     """
-    # Mock data mô phỏng Database chứa 100k bản ghi doanh nghiệp tại HN & HCM
-    mock_db = {
-        "0101248141": {
-            "MST": "0101248141",
-            "Tên công ty": "Công ty TNHH Phần mềm Công nghệ FPT",
-            "Năm thành lập": "2000",
-            "Địa chỉ": "Quận Cầu Giấy, Hà Nội",
-            "Ngành nghề kinh doanh": "Sản xuất phần mềm và Dịch vụ CNTT",
-            "Trạng thái CRM": "Khách hàng VIP, đang gia hạn gói Cloud",
-        },
-        "0314456789": {
-            "MST": "0314456789",
-            "Tên công ty": "Công ty Cổ phần Bán lẻ Minh Tuấn",
-            "Năm thành lập": "2017",
-            "Địa chỉ": "Quận 1, TP. Hồ Chí Minh",
-            "Ngành nghề kinh doanh": "Bán lẻ thiết bị điện tử",
-            "Trạng thái CRM": "Đối tác mới, đang gặp khó khăn tích hợp API thanh toán",
-        },
-    }
-
     query = (mst_or_name or "").strip()
     if not query:
-        return "Không tìm thấy dữ liệu doanh nghiệp trong hệ thống CRM."
+        return "Không tìm thấy dữ liệu doanh nghiệp do truy vấn rỗng."
 
-    # Tìm kiếm theo MST
-    if query in mock_db:
-        return str(mock_db[query])
+    if not supabase:
+        return "Lỗi: Không thể kết nối đến cơ sở dữ liệu Supabase (Client chưa được khởi tạo). Hãy kiểm tra file .env"
 
-    # Tìm kiếm theo tên (giả lập)
-    for data in mock_db.values():
-        if query.lower() in data["Tên công ty"].lower():
-            return str(data)
+    table_name = "doanh_nghiep"  # CHÚ Ý: Đổi tên này nếu bảng trong Supabase của bạn tên khác
+    
+    try:
+        # Nếu query có vẻ là MST (có số, độ dài >= 10)
+        if any(char.isdigit() for char in query) and len(query) >= 10:
+            response = supabase.table(table_name).select("ma_so_thue, ten_cong_ty, nam_thanh_lap, so_dien_thoai, email, dia_chi, tinh_thanh_id").eq("ma_so_thue", query).execute()
+        else:
+            # Tìm gần đúng theo tên công ty (không phân biệt hoa thường)
+            response = supabase.table(table_name).select("ma_so_thue, ten_cong_ty, nam_thanh_lap, so_dien_thoai, email, dia_chi, tinh_thanh_id").ilike("ten_cong_ty", f"%{query}%").execute()
+            
+        def _map_tinh_thanh(record):
+            # Ánh xạ ID Tỉnh thành sang tên để AI hiểu
+            tt_id = record.get("tinh_thanh_id")
+            if tt_id == 1 or tt_id == "1":
+                record["Ten_Tinh_Thanh"] = "Hà Nội"
+            elif tt_id == 2 or tt_id == "2":
+                record["Ten_Tinh_Thanh"] = "TP. Hồ Chí Minh"
+            return record
 
-    return "Không tìm thấy dữ liệu doanh nghiệp trong hệ thống CRM."
+        data = response.data
+        if data and len(data) > 0:
+            # Trả về string JSON bản ghi đầu tiên tìm được để Agent có thể đọc
+            return str(_map_tinh_thanh(data[0]))
+            
+        # Fallback: Nếu không tìm thấy, thử tìm lại với ilike cho tên công ty
+        response_fallback = supabase.table(table_name).select("ma_so_thue, ten_cong_ty, nam_thanh_lap, so_dien_thoai, email, dia_chi, tinh_thanh_id").ilike("ten_cong_ty", f"%{query}%").execute()
+        if response_fallback.data and len(response_fallback.data) > 0:
+            return str(_map_tinh_thanh(response_fallback.data[0]))
+            
+        return f"Không tìm thấy dữ liệu doanh nghiệp nào khớp với '{query}' trong hệ thống CRM."
+    except Exception as e:
+        return f"Lỗi truy vấn cơ sở dữ liệu Supabase: {str(e)}"
 
 
 def _extract_mst_or_company_name(task1_output: str) -> Optional[str]:
@@ -119,15 +129,16 @@ data_agent = Agent(
 )
 
 response_agent = Agent(
-    role="Empathetic B2B Communications Specialist",
+    role="Chuyên viên Hỗ trợ Đối tác của Esgoo CRM",
     goal=(
-        "Viết email phản hồi đối tác dựa trên dữ liệu CRM được cung cấp. "
-        "Cần áp dụng Empathetic Response Generation (ERG) để tạo sự thấu hiểu."
+        "Viết email phản hồi B2B chuyên nghiệp để trả lời khiếu nại của đối tác. "
+        "Tuyệt đối không được nhầm lẫn vai trò: Bạn là nhân viên của Esgoo CRM, và bạn đang trả lời khách hàng."
     ),
     backstory=(
-        "Bạn là giám đốc quan hệ khách hàng. Bạn hiểu rằng phía sau mỗi doanh nghiệp là những con người. "
-        "Bạn luôn dùng thông tin ngành nghề và vị trí địa lý để tạo ra sự kết nối, đồng cảm với khó khăn kỹ thuật "
-        "của họ, giữ văn phong chuyên nghiệp nhưng ấm áp."
+        "Bạn là Chuyên viên Hỗ trợ Đối tác (Partner Support Specialist) tại công ty nền tảng phần mềm Esgoo CRM. "
+        "Khách hàng của bạn là các công ty/doanh nghiệp khác (B2B) đang sử dụng API hoặc phần mềm của Esgoo. "
+        "Mỗi khi họ gửi email báo lỗi, bạn sẽ kiểm tra thông tin công ty họ trong Database, sau đó viết email trả lời "
+        "để trấn an và đưa ra hướng xử lý. Bạn luôn làm việc chuyên nghiệp, thấu hiểu, và luôn ký tên là 'Đội ngũ hỗ trợ kỹ thuật - Esgoo CRM'."
     ),
     verbose=True,
     allow_delegation=False,
@@ -163,13 +174,17 @@ task2 = Task(
 
 task3 = Task(
     description=(
-        "Sử dụng dữ liệu trả về từ Task 2 và email gốc, hãy soạn một email tiếng Việt phản hồi. "
-        "Đồng cảm với đặc thù ngành bán lẻ (lỗi thanh toán tại quầy là rất nghiêm trọng), "
-        "đưa kế hoạch xử lý ưu tiên, và cá nhân hóa theo trạng thái CRM."
+        "Đọc email khiếu nại gốc của đối tác, và đọc dữ liệu công ty của họ do Task 2 vừa lấy từ Database (ví dụ: Tên công ty, Ngành nghề...). "
+        "Nhiệm vụ: Viết MỘT (1) email phản hồi hoàn chỉnh để gửi lại cho người đó.\n\n"
+        "QUY TẮC NGHIÊM NGẶT (PHẢI TUÂN THỦ 100%):\n"
+        "1. VAI TRÒ: Bạn đại diện cho 'Esgoo CRM'. Tuyệt đối KHÔNG nhận bạn là người của công ty khách hàng.\n"
+        "2. NGƯỜI NHẬN: Gửi đích danh tới người gửi email hoặc Kính gửi đại diện của [Tên công ty khách hàng lấy từ Task 2].\n"
+        "3. LỖI ĐIỀN KHUYẾT: CẤM SỬ DỤNG các ngoặc vuông như [Tên của bạn], [Chức danh], [Số điện thoại]. Nếu cần, hãy tự xưng là 'Tuấn Anh - Quản lý Hỗ trợ Kỹ thuật Esgoo' và số điện thoại ảo của Esgoo.\n"
+        "4. NỘI DUNG: Áp dụng sự thấu cảm dựa trên đúng ngành nghề của công ty đó (ví dụ truyền thông thì lo về KPI, bán lẻ thì lo thanh toán). Trình bày lộ trình xử lý lỗi rõ ràng 3 bước."
     ),
     expected_output=(
-        "Một email tiếng Việt hoàn chỉnh, chuyên nghiệp, thể hiện rõ sự thấu hiểu (ERG) "
-        "và cá nhân hóa theo thông tin doanh nghiệp."
+        "Một bức email B2B hoàn chỉnh bằng tiếng Việt, sẵn sàng để gửi đi ngay lập tức mà không cần con người chỉnh sửa lại. "
+        "Kết thúc bằng chữ ký của Đội ngũ hỗ trợ Esgoo CRM."
     ),
     agent=response_agent,
 )
