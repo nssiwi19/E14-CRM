@@ -22,7 +22,7 @@ main_llm = LLM(
 
 
 # 2. Định nghĩa công cụ truy xuất dữ liệu doanh nghiệp (Tool Calling)
-@tool("Search_Enterprise_Database")
+@tool("search_enterprise_database")
 def search_enterprise_database(mst_or_name: str) -> str:
     """
     Truy vấn cơ sở dữ liệu 100k doanh nghiệp bằng Mã số thuế (MST) hoặc Tên công ty.
@@ -106,7 +106,7 @@ data_agent = Agent(
     role="Enterprise Data Analyst",
     goal=(
         "Sử dụng MST hoặc Tên công ty từ Agent trước để tra cứu thông tin doanh nghiệp "
-        "trong cơ sở dữ liệu bằng công cụ Search_Enterprise_Database."
+        "trong cơ sở dữ liệu bằng công cụ search_enterprise_database."
     ),
     backstory=(
         "Bạn là người nắm giữ quyền truy cập kho dữ liệu 100.000 doanh nghiệp Việt Nam. "
@@ -151,7 +151,7 @@ task1 = Task(
 
 task2 = Task(
     description=(
-        "Lấy entity từ kết quả Task 1 và truyền vào công cụ Search_Enterprise_Database "
+        "Lấy entity từ kết quả Task 1 và truyền vào công cụ search_enterprise_database "
         "để truy vấn dữ liệu CRM. Nếu output không chuẩn JSON, tự bóc tách MST/Tên công ty."
     ),
     expected_output=(
