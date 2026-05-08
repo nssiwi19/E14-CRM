@@ -39,7 +39,7 @@ with st.sidebar:
     
     app_mode = st.radio(
         "Chọn chức năng:",
-        ["📊 Market Research", "🤝 CRM B2B Response"],
+        ["📊 Market Research", "🤝 CRM B2B Response", "📈 Data Analytics Tool"],
         index=0
     )
     
@@ -105,3 +105,7 @@ elif app_mode == "🤝 CRM B2B Response":
                     st.error(f"❌ Đã xảy ra lỗi: {str(e)}")
         else:
             st.warning("Vui lòng nhập nội dung email trước khi gửi.")
+
+elif app_mode == "📈 Data Analytics Tool":
+    from data_analytics_tool import render_analytics_dashboard
+    render_analytics_dashboard()
