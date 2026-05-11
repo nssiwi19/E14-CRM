@@ -3,7 +3,7 @@ litellm
 streamlit
 python-dotenv
 pydantic
-googlesearch-python
+duckduckgo-search
 pandas
 openpyxl
 setuptools<70.0.0
